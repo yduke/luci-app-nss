@@ -6,6 +6,9 @@ Qualcomm **NSS**(Network Subsystem)状态查看插件 —— NSS 是 IPQ60xx / I
 插件不修改任何配置、不写入任何 NSS 寄存器,只**读取** `qca-nss-drv` 与
 `qca-nss-ecm` 内核模块通过 debugfs 暴露的统计数据。
 
+**注意：**
+本插件目前仅在 京东云太乙 Kwrt 25.12 测试通过，其他硬件不支持，其他系统未进行过测试，安装风险自担。
+
 ## 功能
 
 | 位置 | 内容 |
