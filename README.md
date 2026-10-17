@@ -1,189 +1,209 @@
 # luci-app-nss
 
-Qualcomm **NSS**(Network Subsystem)状态查看插件 —— NSS 是 IPQ60xx / IPQ807x
-(qualcommax)路由器里那颗专门做网络转发的协处理器,也就是通常所说的“NPU”。
+A LuCI status plugin for Qualcomm **NSS** (Network Subsystem), the network
+offload processor (often called an NPU) found in IPQ60xx / IPQ807x
+(`qualcommax`) routers.
 
-插件不修改任何配置、不写入任何 NSS 寄存器,只**读取** `qca-nss-drv` 与
-`qca-nss-ecm` 内核模块通过 debugfs 暴露的统计数据。
+The plugin does not change any configuration or write to NSS registers. It
+only reads statistics exposed through debugfs by the `qca-nss-drv` and
+`qca-nss-ecm` kernel modules.
 
-**注意：**
-本插件目前仅在 京东云太乙 Kwrt 25.12 测试通过，其他硬件不支持，其他系统未进行过测试，安装风险自担。
+> **Warning:** This plugin has only been tested on JDCloud Taiyi routers
+> running Kwrt 25.12. Other hardware is not supported, and other firmware
+> has not been tested. Install at your own risk.
 
-## 功能
+## Features
 
-| 位置 | 内容 |
+| Location | Information |
 | --- | --- |
-| **状态 → 概览**(CPU 使用率下方) | NPU 使用率,表格 + `cbi-progressbar`,格式与 CPU 面板一致,按 NSS 核心逐行显示 |
-| **状态 → NPU (NSS) 状态** | 详细页:核心负载(带最低/最高水位)、ECM 硬件加速流(IPv4/IPv6、TCP/UDP)、NSS 模块实时吞吐(N2H / IPv4 / IPv6 / PPPoE)、非零的 drop / error 计数器 |
+| **Status → Overview** (below CPU usage) | NSS utilization, displayed as one progress bar per NSS core in a table using the same `cbi-progressbar` style as the CPU panel |
+| **Status → NPU (NSS) Status** | Detailed view of core load (including minimum and maximum values), ECM hardware-accelerated flows (IPv4/IPv6 and TCP/UDP), live NSS module throughput (N2H / IPv4 / IPv6 / PPPoE), and non-zero drop/error counters |
 
-概览页那一段之所以能直接插在 CPU 下面,是因为 LuCI 的概览页会**动态扫描**
-`/www/luci-static/resources/view/status/include/` 并按文件名顺序加载其中的 `*.js`,
-本包放进去的文件名是 `12_nss.js`,所以自然排在 `11_cpu.js` 之后 —— 没有覆盖或
-修改任何 LuCI 自带文件,固件升级后不会被冲掉。
+The Overview panel appears below the CPU panel because LuCI dynamically scans
+`/www/luci-static/resources/view/status/include/` and loads its `*.js` files
+in filename order. This package installs `12_nss.js`, so it follows
+`11_cpu.js` without replacing or modifying any LuCI-provided files. This also
+means the panel is not overwritten by firmware upgrades.
 
-在不具备 NSS 的平台(或 `qca-nss-drv` 未加载)上,概览页那一节会自动隐藏。
+On platforms without NSS, or when `qca-nss-drv` is not loaded, the Overview
+section is hidden automatically.
 
-## 目录结构
+## Repository layout
 
-```
+```text
 .
-├── Makefile                                  # OpenWrt buildroot / SDK 用
+├── Makefile                                  # For the OpenWrt buildroot / SDK
 ├── README.md
+├── README_zhCN.md                            # Chinese documentation
 ├── LICENSE                                   # ISC
 ├── .gitignore
-├── htdocs/                                   # 安装时映射到 /www/
+├── htdocs/                                   # Mapped to /www/ during installation
 │   └── luci-static/resources/view/
-│       ├── nss/status.js                     # 详细状态页
-│       └── status/include/12_nss.js          # 概览页 NPU 使用率
-├── root/                                     # 安装时映射到 /
+│       ├── nss/status.js                     # Detailed status page
+│       └── status/include/12_nss.js          # Overview NPU utilization panel
+├── root/                                     # Mapped to / during installation
 │   └── usr/share/
-│       ├── luci/menu.d/luci-app-nss.json     # 菜单项:状态 → NPU (NSS) 状态
-│       └── rpcd/acl.d/luci-app-nss.json      # debugfs 读取权限
+│       ├── luci/menu.d/luci-app-nss.json     # Menu entry: Status → NPU (NSS) Status
+│       └── rpcd/acl.d/luci-app-nss.json      # Permission to read debugfs statistics
 ├── scripts/
-│   ├── build-ipk.sh                          # 免 SDK 打包(可复现构建)
-│   └── install.sh                            # 构建 + scp + opkg install
+│   ├── build-ipk.sh                          # Reproducible package build without the SDK
+│   └── install.sh                            # Build + SCP + opkg install
 ├── tests/
-│   ├── run.sh                                # 运行下面的 node 离线测试
+│   ├── run.sh                                # Runs the offline Node.js tests below
 │   ├── test-overview-include.js
 │   └── test-status-view.js
-└── luci-app-nss_1.1.0-1_all.ipk              # 预编译安装包
+└── luci-app-nss_1.1.0-1_all.ipk              # Prebuilt package
 ```
 
-## 安装方法
+## Installation
 
-### 方法一:直接安装仓库里的 ipk(推荐)
+### Method 1: Install the prebuilt package from this repository (recommended)
 
-在**路由器**上执行(把 ipk 传到路由器后):
+Run these commands on the **router** after copying the package to it:
 
 ```sh
-# 从本机传到路由器
+# Copy the package from your computer to the router
 scp luci-app-nss_1.1.0-1_all.ipk root@192.168.2.1:/tmp/
 
-# 在路由器上安装
+# Connect to the router and install it
 ssh root@192.168.2.1
 opkg install /tmp/luci-app-nss_1.1.0-1_all.ipk
 
-# 让 rpcd 重新加载 ACL(rpcd 在启动时缓存 /usr/share/rpcd/acl.d)
+# Reload rpcd so it picks up the new ACL
+# (rpcd caches /usr/share/rpcd/acl.d at startup)
 /etc/init.d/rpcd reload
 ```
 
-然后**退出 LuCI 重新登录**(菜单在浏览器会话里有缓存),即可在
-「状态 → 概览」看到 NPU 使用率,在「状态 → NPU (NSS) 状态」看到详细页。
+Then **log out of LuCI and log back in** (the menu is cached in the browser
+session). You should see NSS utilization on **Status → Overview** and the
+detailed page at **Status → NPU (NSS) Status**.
 
-> 已经装过旧版本时,同样用 `opkg install` 安装新 ipk 即为升级;
-> `opkg list-installed | grep luci-app-nss` 可查看已装版本。
+> To upgrade an existing installation, install the new IPK with `opkg install`
+> in the same way. Run `opkg list-installed | grep luci-app-nss` to check the
+> installed version.
 
-### 方法二:LuCI 界面上传
+### Method 2: Upload through the LuCI interface
 
-「系统 → 软件包 → 上传软件包…」选择 `luci-app-nss_1.1.0-1_all.ipk`,
-上传并安装,然后执行 `/etc/init.d/rpcd reload`(或重启路由器)。
+Go to **System → Software → Upload Package…**, select
+`luci-app-nss_1.1.0-1_all.ipk`, and upload and install it. Then run
+`/etc/init.d/rpcd reload` (or reboot the router).
 
-### 方法三:源码目录直接安装(不打包)
+### Method 3: Install directly from the source tree (without packaging)
 
 ```sh
-SRC=./                       # 本仓库根目录
-scp -r $SRC/htdocs/. root@192.168.2.1:/www/
-scp -r $SRC/root/.   root@192.168.2.1:/
+SRC=./                       # Repository root
+scp -r "$SRC"/htdocs/. root@192.168.2.1:/www/
+scp -r "$SRC"/root/.   root@192.168.2.1:/
 ssh root@192.168.2.1 '/etc/init.d/rpcd reload'
 ```
 
-### 一键脚本
+### One-step installation script
 
 ```sh
 scripts/install.sh root@192.168.2.1
 ```
 
-会依次执行:构建 ipk → scp 到 `/tmp` → `opkg install` → `rpcd reload`。
+The script builds the IPK, copies it to `/tmp` over SCP, installs it with
+`opkg`, and reloads `rpcd`.
 
-### 卸载
+### Uninstall
 
 ```sh
 opkg remove luci-app-nss
 ```
 
-## 从源码构建
+## Build from source
 
-### 免 SDK(推荐,只用 tar/gzip)
+### Without the SDK (recommended; requires only `tar` and `gzip`)
 
 ```sh
 scripts/build-ipk.sh
 # built: /…/luci-app-nss_1.1.0-1_all.ipk
 ```
 
-脚本把 `htdocs/` 映射到 `/www/`、`root/` 映射到 `/`,生成 opkg 使用的
-gzipped-tar 形式的 ipk(`./debian-binary` + `./control.tar.gz` + `./data.tar.gz`);
-构建是可复现的(条目排序、mtime/uid/gid 固定、gzip 不带时间戳),
-同样源码构建两次得到的文件逐字节相同。
+The script maps `htdocs/` to `/www/` and `root/` to `/`, then creates an IPK
+in the gzipped-tar format used by `opkg` (`./debian-binary` +
+`./control.tar.gz` + `./data.tar.gz`). The build is reproducible: archive
+entries are sorted, timestamps and ownership are fixed, and gzip timestamps
+are omitted. Building the same source twice produces byte-identical files.
 
-> 注意:本包面向 OpenWrt 24.10 / 25.x 的 opkg。这类 opkg **不接受**传统的
-> ar 归档 ipk,所以脚本生成的是 gzipped-tar 形式。
+> **Note:** This package targets `opkg` on OpenWrt 24.10 / 25.x. These
+> versions of `opkg` do **not** accept the traditional ar-archive IPK format,
+> so the script creates a gzipped-tar IPK.
 
-### 用 OpenWrt SDK / buildroot
+### With the OpenWrt SDK / buildroot
 
-把整个目录放进 `package/luci-app-nss/`(或做一个 feed),然后:
+Place the whole directory under `package/luci-app-nss/` (or add it as a
+feed), then run:
 
 ```sh
 make menuconfig      # LuCI → Applications → luci-app-nss
 make package/luci-app-nss/compile V=s
 ```
 
-## 测试
+## Tests
 
-两个视图的逻辑用 node 做了离线测试(LuCI 运行时 `E` / `fs` / `poll` / `L` /
-`baseclass` 用桩件替代,不需要路由器):
+The view logic is tested offline with Node.js. LuCI runtime APIs (`E`, `fs`,
+`poll`, `L`, and `baseclass`) are stubbed, so no router is required:
 
 ```sh
-tests/run.sh          # 需要 node
+tests/run.sh          # Requires Node.js
 ```
 
-- `tests/test-overview-include.js`:概览页 NPU 面板,覆盖单核、双核、驱动缺失
-  (应返回 `null` 从而隐藏该节)、内容异常四种情况;
-- `tests/test-status-view.js`:详细页,覆盖首轮无速率(`—`)、计数器变化后的
-  速率换算、累计值、drop/error 表重建。
+- `tests/test-overview-include.js` tests the Overview NPU panel with one core,
+  two cores, a missing driver (which should return `null` and hide the
+  section), and malformed input.
+- `tests/test-status-view.js` tests the detailed page, including unavailable
+  rates on the first poll (`—`), rate calculations from counter deltas,
+  cumulative values, and rebuilding the drop/error table.
 
-## 数据来源
+## Data sources
 
-全部来自驱动已有的 debugfs 节点,只读:
+All data is read from existing driver debugfs nodes:
 
-| 数据 | 路径 |
+| Data | Path |
 | --- | --- |
-| NSS 核心负载(Min/Avg/Max,1 秒均值) | `/sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi` |
-| NSS 模块计数(N2H / IPv4 / IPv6 / PPPoE / drv …) | `/sys/kernel/debug/qca-nss-drv/stats/<模块>` |
-| ECM 硬件加速流数量 | `/sys/kernel/debug/ecm/ecm_nss_ipv4/accelerated_count` 等 |
-| 各模块内存布局 | `/sys/kernel/debug/qca-nss-drv/meminfo/core0` |
+| NSS core load (Min/Avg/Max, one-second average) | `/sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi` |
+| NSS module counters (N2H / IPv4 / IPv6 / PPPoE / driver, etc.) | `/sys/kernel/debug/qca-nss-drv/stats/<module>` |
+| Number of ECM hardware-accelerated flows | `/sys/kernel/debug/ecm/ecm_nss_ipv4/accelerated_count`, etc. |
+| Per-core memory layout | `/sys/kernel/debug/qca-nss-drv/meminfo/core0` |
 
-命令行等价查看:
+Equivalent command-line checks:
 
 ```sh
 cat /sys/kernel/debug/qca-nss-drv/stats/cpu_load_ubi
 cat /sys/kernel/debug/ecm/ecm_nss_ipv4/accelerated_count
 ```
 
-## 说明与注意事项
+## Notes and caveats
 
-- `cpu_load_ubi` 是驱动给出的 1 秒平均占用率。数值低是**正常且期望**的:
-  说明转发确实在 NPU 上完成,而不是 CPU 软转发。
-- 除核心负载外,页面上的计数都是**自 NSS 固件启动(即路由器开机)以来的累计值**;
-  “吞吐”一栏的速率是相邻两次采样的差值。
-- 菜单项与详情页都依赖 `/usr/share/rpcd/acl.d/luci-app-nss.json` 授予的
-  debugfs 读取权限;若使用非 root 的 LuCI 账号,需要为该账号授予
-  `luci-app-nss` ACL 组。
+- `cpu_load_ubi` reports utilization averaged over one second by the driver.
+  A low value is **normal and expected**: it indicates that packet
+  forwarding is being handled by the NPU rather than by software forwarding
+  on the CPU.
+- Except for core load, the page's counters are **cumulative since the NSS
+  firmware started** (that is, since the router booted). The throughput
+  rates are calculated from the difference between consecutive samples.
+- Both the menu entry and the detailed page depend on the debugfs read
+  permissions granted by `/usr/share/rpcd/acl.d/luci-app-nss.json`. If you
+  use a non-root LuCI account, grant that account the `luci-app-nss` ACL
+  group.
 
-## 故障排查
+## Troubleshooting
 
-| 现象 | 处理 |
+| Symptom | Action |
 | --- | --- |
-| 菜单里看不到「NPU (NSS) 状态」 | 重新登录 LuCI;仍不行则 `/etc/init.d/rpcd reload`,必要时 `/etc/init.d/nginx restart` |
-| 概览页没有 NPU 那一节 | `ls /sys/kernel/debug/qca-nss-drv/stats/` 是否存在;不存在说明 `qca-nss-drv` 未加载或平台不支持 |
-| 页面数值全是「—」 | 该 debugfs 文件不可读(权限不足),检查 ACL 与 `rpcd` 是否已 reload |
-| 想确认已经装好 | `opkg files luci-app-nss` 应列出 4 个文件 |
+| **NPU (NSS) Status** is missing from the menu | Log in to LuCI again. If it is still missing, run `/etc/init.d/rpcd reload`; if necessary, restart nginx with `/etc/init.d/nginx restart`. |
+| The NPU section is missing from the Overview page | Check whether `ls /sys/kernel/debug/qca-nss-drv/stats/` exists. If it does not, `qca-nss-drv` is not loaded or the platform is unsupported. |
+| All page values show `—` | The debugfs files may not be readable due to insufficient permissions. Check the ACL and whether `rpcd` has been reloaded. |
+| Verify that the package is installed | `opkg files luci-app-nss` should list four files. |
 
-## 已验证环境
+## Tested environment
 
-- 设备:JDCloud RE-CS-07(IPQ60xx,NSS 固件 11.4)
-- 固件:Kwrt 25.12-SNAPSHOT,内核 6.12.108
-- LuCI:26.283(client-side JS,主题 argon)
+- Device: JDCloud RE-CS-07 (IPQ60xx, NSS firmware 11.4)
+- Firmware: Kwrt 25.12-SNAPSHOT, kernel 6.12.108
+- LuCI: 26.283 (client-side JavaScript, Argon theme)
 
 ## License
 
-ISC,见 [LICENSE](LICENSE)。
+ISC; see [LICENSE](LICENSE).
