@@ -1,0 +1,15 @@
+{
+	"luci-app-nss": {
+		"description": "Grant read access to Qualcomm NSS (NPU) statistics",
+		"read": {
+			"file": {
+				"/sys/kernel/debug/qca-nss-drv/stats/*": [ "read" ],
+				"/sys/kernel/debug/ecm/*": [ "read" ],
+				"/sys/kernel/debug/ecm/*/*": [ "read" ]
+			},
+			"ubus": {
+				"file": [ "read" ]
+			}
+		}
+	}
+}

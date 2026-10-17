@@ -1,0 +1,16 @@
+{
+	"admin/status/nss": {
+		"title": "NPU (NSS) 状态",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "nss/status"
+		},
+		"depends": {
+			"acl": [ "luci-app-nss" ],
+			"fs": [
+				{ "/sys/kernel/debug/qca-nss-drv/stats": "present" }
+			]
+		}
+	}
+}
